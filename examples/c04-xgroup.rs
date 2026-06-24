@@ -61,3 +61,71 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "XGROUP - group '{group_01}' created"
         );
     }
+    // -- Reader Task (group_01, consumer_g01_a)
+    let mut con_reader =
+        client.get_multiplexed_async_connection().await?;
+
+    let reader_handle = tokio::spawn(async move {
+        let consumer = "consumer_g01_a";
+
+        println!(
+            "READER - started ({consumer})"
+        );
+
+        let options = StreamReadOptions::default()
+            .count(1)
+            .block(2000)
+            .group(group_01, consumer);
+
+        loop {
+            let res: Option<StreamReadReply> =
+                con_reader
+                    .xread_options(
+                        &[stream_name],
+                        &[">"],
+                        &options
+                    )
+                    .await
+                    .expect("Fail to xread");
+
+            if let Some(reply) = res {
+                for stream_key in reply.keys {
+                    for stream_id in stream_key.ids {
+                        println!(
+                            "READER - {group_01} - {consumer} - read: id: {} - fields: {:?}",
+                            stream_id.id,
+                            stream_id.map
+                        );
+
+                        println!("READER - SLEEP 400ms");
+
+                        sleep(Duration::from_millis(400)).await;
+
+                        let res: Result<(), _> =
+                            con_group_01
+                                .xack(
+                                    stream_name,
+                                    group_01,
+                                    &[stream_id.id]
+                                )
+                                .await;
+
+                        if let Err(res) = res {
+                            println!(
+                                "XREADGROUP - ERROR ACK: {res}"
+                            );
+                        } else {
+                            println!("XREADGROUP - ACK OK");
+                        }
+                    }
+                }
+            } else {
+                println!(
+                    "READER - timeout, assuming writer is done."
+                );
+                break;
+            }
+        }
+
+        println!("READER - finished");
+    });
