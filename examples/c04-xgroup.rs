@@ -129,3 +129,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         println!("READER - finished");
     });
+    // -- Wait for the tasks
+    writer_handle.await?;
+    reader_handle.await?;
+
+    // -- Clean up the stream
+    let mut con =
+        client.get_multiplexed_async_connection().await?;
+
+    let count: i32 =
+        con.del(stream_name).await?;
+
+    println!(
+        "Stream '{stream_name}' deleted ({count} key)."
+    );
+
+    Ok(())
+}
