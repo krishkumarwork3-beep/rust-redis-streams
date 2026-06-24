@@ -75,3 +75,78 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 	Ok(())
 }
+
+async fn run_consumer(
+	client: &Client,
+	stream_name: &'static str,
+	group_name: &'static str,
+	consumer_name: &'static str,
+) -> Result<JoinHandle<()>, Box<dyn std::error::Error>> {
+
+	let mut con_reader =
+		client.get_multiplexed_async_connection().await?;
+
+	let reader_handle = tokio::spawn(async move {
+		let consumer = consumer_name;
+
+		println!("READER - started ({consumer})");
+
+		let options = StreamReadOptions::default()
+			.count(1)
+			.block(2000)
+			.group(group_name, consumer);
+
+		loop {
+			let res: Option<StreamReadReply> = con_reader
+				.xread_options(
+					&[stream_name],
+					&[">"],
+					&options
+				)
+				.await
+				.expect("Fail to xread");
+
+			if let Some(reply) = res {
+				for stream_key in reply.keys {
+					for stream_id in stream_key.ids {
+						println!(
+							"READER - {group_name} - {consumer} - read: id: {} - fields: {:?}",
+							stream_id.id,
+							stream_id.map
+						);
+
+						println!("READER - SLEEP 400ms");
+
+						sleep(Duration::from_millis(400)).await;
+
+						let res: Result<(), _> =
+							con_reader
+								.xack(
+									stream_name,
+									group_name,
+									&[stream_id.id]
+								)
+								.await;
+
+						if let Err(res) = res {
+							println!(
+								"XREADGROUP - ERROR ACK: {res}"
+							);
+						} else {
+							println!("XREADGROUP - ACK OK");
+						}
+					}
+				}
+			} else {
+				println!(
+					"READER - timeout, assuming writer is done."
+				);
+				break;
+			}
+		}
+
+		println!("READER - finished");
+	});
+
+	Ok(reader_handle)
+}
