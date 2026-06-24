@@ -32,3 +32,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         )?;
 
     println!("Single Entry:\n{res:#?}");
+    // -- XTrim
+    // Delete the entries
+    let res: u64 =
+        con.xtrim(
+            stream_name,
+            StreamMaxlen::Equals(0)
+        )?;
+
+    println!("xtrim count: {res}");
+
+    // -- Del
+    // Delete the key
+    let res: u64 = con.del(stream_name)?;
+
+    println!("del count: {res}");
+
+    Ok(())
+}
